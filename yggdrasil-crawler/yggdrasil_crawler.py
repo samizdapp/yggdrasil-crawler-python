@@ -7,7 +7,7 @@ import pprint
 class YggdrasilCrawler():
 
   host_port = ('localhost', 9001)
-  unix_socket = "/var/run/yggdrasil.sock"
+  unix_socket = "/var/run/yg/yg.sock"
   yggsocket = None
 
   visited = dict() # Add nodes after a successful lookup response
@@ -28,10 +28,13 @@ class YggdrasilCrawler():
 
 
   def getDHTPingRequest(self, key, coords, target=None):
-    return '{{"keepalive":true, "request":"dhtPing", "box_pub_key":"{}", "coords":"{}"}}'.format(key, coords)
+    return '{{"keepalive":true, "request":"dhtPing", "key":"{}", "coords":"{}"}}'.format(key, coords)
 
-  def getNodeInfoRequest(self, key, coords, target=None):
-    return '{{"keepalive":true, "request":"getNodeInfo", "box_pub_key":"{}", "coords":"{}"}}'.format(key, coords)
+  def getNodeInfoRequest(self, key):
+    return '{{"keepalive":true, "request":"getNodeInfo", "key":"{}"}}'.format(key)
+
+  def getRemoteDHTRequest(self, key):
+    return '{{"keepalive":true, "request":"debug_remoteGetDHT", "key":"{}"}}'.format(key)
 
   def doRequest(self, req):
     self.yggsocket.send(req.encode('utf-8'))
@@ -39,7 +42,7 @@ class YggdrasilCrawler():
     return data
 
   def handleResponse(self, address, info, data):
-    self.timedout[str(address)] = {'box_pub_key':str(info['box_pub_key']), 'coords':str(info['coords'])}
+    self.timedout[str(address)] = {'key':str(info['key']), 'coords':str(info['coords'])}
     if not data: return
     if 'response' not in data: return
     if 'nodes' not in data['response']: return
@@ -47,7 +50,7 @@ class YggdrasilCrawler():
       if addr in self.visited: continue
       self.rumored[addr] = rumor
     if address not in self.visited:
-      self.visited[str(address)] = {'box_pub_key':str(info['box_pub_key']), 'coords':str(info['coords'])}
+      self.visited[str(address)] = {'key':str(info['key']), 'coords':str(info['coords'])}
       if address in self.timedout: del self.timedout[address]
 
   def crawl(self):
@@ -58,23 +61,32 @@ class YggdrasilCrawler():
     selfInfo = self.doRequest('{"keepalive":true, "request":"getSelf"}')
 
     for k,v in selfInfo['response']['self'].items(): self.rumored[k] = v
-
-    while len(self.rumored) > 0:
-      for k,v in self.rumored.items():
-        self.handleResponse(k, v, self.doRequest(self.getDHTPingRequest(v['box_pub_key'], v['coords'])))
-        break
-      del self.rumored[k]
-      print(f'Rumored:{len(self.rumored)}, Available: {len(self.visited)}, Timed out: {len(self.timedout)}')
-
-    print("getting nodeinfo...")
-    ni_counter = 0
-    ni_max = len(self.visited)
-    for k,v in self.visited.items():
-      ni_counter += 1
-      print(f"{ni_counter}/{ni_max}")
-      nodeInfo = self.doRequest(self.getNodeInfoRequest(v['box_pub_key'], v['coords']))
-      if nodeInfo['status'] == "success":
-        self.visited[k].update(nodeInfo['response']['nodeinfo'])
+    print(f'Rumored:{len(self.rumored)}, Available: {len(self.visited)}, Timed out: {len(self.timedout)}')
+    nodeInfo = self.doRequest('{"keepalive":true, "request":"getDHT"}')
+    dht = nodeInfo['response']['dht']
+    for ipv6,data in dht.items():
+      key = data['key']
+      print(f'  {ipv6}={key}')
+      nodeInfo = self.doRequest(self.getRemoteDHTRequest(key))
+      for k,v in nodeInfo.items():
+        print(f'    {k}={v}')
+      dht = nodeInfo['response']
+      for ipv6,data in dht.items():
+        keys = data['keys']
+        for key in keys:
+          print(f'  {ipv6}={key}')
+          info = self.doRequest(self.getNodeInfoRequest(key))
+          for k,v in info['response'].items():
+            print(f' !!!! {k}={v}')
+    # print("getting nodeinfo...")
+    # ni_counter = 0
+    # ni_max = len(self.visited)
+    # for k,v in self.visited.items():
+    #   ni_counter += 1
+    #   print(f"{ni_counter}/{ni_max}")
+    #   nodeInfo = self.doRequest(self.getNodeInfoRequest(v['key'], v['coords']))
+    #   if nodeInfo['status'] == "success":
+    #     self.visited[k].update(nodeInfo['response']['nodeinfo'])
 
   def pprint(self):
     print(f'Timeout: ')

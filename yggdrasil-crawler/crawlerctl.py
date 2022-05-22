@@ -49,21 +49,5 @@ if __name__ == "__main__":
     print("type 'h' for help")
 
     while True:
-        user_input = input()
-
-        if user_input.lower() == "q":  # quit
-            break
-        elif user_input.lower() == "h":
-            print("'h' - help")
-            print("'i NODE' - get detailed information about NODE, where NODE argument is either full name or address of target node")
-            print("    or part of name/address to filter the list")
-            print("'u' - update node list")
-            print("'q' - quit")
-        elif user_input.lower().startswith('i'):
-            print(f"Filter: '{user_input[2:]}'")
-            crawlerctl.filter_nodes(user_input[2:])
-        elif user_input.lower() == "u":
-            crawlerctl.crawler.crawl()
-            crawlerctl.print_results()
-        else:
-            print(f"unknown command '{user_input}'")
+        crawlerctl.crawler.crawl()
+        # crawlerctl.print_results()
